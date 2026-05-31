@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { open } from '@tauri-apps/plugin-dialog';
 import { listen } from '@tauri-apps/api/event';
-import { Sun, Moon, Unlock, FolderArchive, CheckCircle2, AlertCircle, Info, ExternalLink, Layers, Heart } from 'lucide-react';
+import { Sun, Moon, Unlock, FolderArchive, CheckCircle2, AlertCircle, Info, ExternalLink, Layers, Heart, XCircle } from 'lucide-react';
 
 const DONATION_URL = "https://buymeacoffee.com/helderlagrisola"; 
 
@@ -30,7 +30,6 @@ function App() {
     }
   }, [darkMode]);
 
-  // ✨ Listen to the background runtime task updates
   useEffect(() => {
     let unlisten;
     async function setupListener() {
@@ -38,7 +37,6 @@ function App() {
         const currentProgress = event.payload.percentage;
         setProgress(currentProgress);
         
-        // Unlocks UI controls when background thread returns a 100% complete state
         if (currentProgress === 100) {
           setIsExtracting(false);
           setStatus({ message: 'Archive successfully unpacked into its own folder!', type: 'success' });
@@ -68,13 +66,25 @@ function App() {
       setIsExtracting(true);
       setStatus({ message: 'Decompressing archive architecture natively...', type: 'info' });
       
-      // Fires the command to Rust. Returns almost immediately with the target folder name
       const targetFolder = await invoke('extract_archive', { filePath: selectedFile });
       setExtractedPath(targetFolder);
       
     } catch (err) {
       setStatus({ message: `Extraction failed: ${err}`, type: 'error' });
       setIsExtracting(false);
+    }
+  };
+
+  // ✨ FIX: Interrupts and resets the background processing cycle instantly
+  const handleCancel = async () => {
+    try {
+      await invoke('cancel_extraction');
+      setIsExtracting(false);
+      setProgress(0);
+      setExtractedPath(null);
+      setStatus({ message: 'Extraction aborted by user. Temporary components wiped.', type: 'error' });
+    } catch (err) {
+      setStatus({ message: `Failed to signal cancellation sequence: ${err}`, type: 'error' });
     }
   };
 
@@ -90,7 +100,7 @@ function App() {
 
   const handleDonate = async () => {
     try {
-      await invoke('open_browser', { url: DONATION_URL });
+      await invoke('open_browser', { url: 'https://buymeacoffee.com/helderlagrr' });
     } catch (err) {
       setStatus({ message: "Could not open system browser link.", type: "error" });
     }
@@ -163,7 +173,7 @@ function App() {
                 <div className="w-3 h-3 rounded-full bg-zinc-900 dark:bg-white"></div>
               </div>
 
-              <div className="w-full max-w-[240px]">
+              <div className="w-full max-w-[240px] mb-4">
                 <div className="flex justify-between mb-2 text-[10px] font-bold uppercase tracking-widest text-zinc-400 dark:text-white">
                   <span>Decompressing</span>
                   <span className="text-zinc-900 dark:text-yellow-400">{progress}%</span>
@@ -175,6 +185,14 @@ function App() {
                   ></div>
                 </div>
               </div>
+
+              {/* 🛑 NEW: Elegant, low-contrast Cancel Button context link */}
+              <button
+                onClick={handleCancel}
+                className="flex items-center gap-1.5 px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider text-red-500 border border-red-500/20 hover:bg-red-500/10 hover:border-red-500 rounded-lg transition-all duration-150"
+              >
+                <XCircle size={12} /> Cancel Operation
+              </button>
             </div>
           )}
 
@@ -192,7 +210,7 @@ function App() {
               className={`w-full py-3 text-xs font-semibold rounded-xl transition-all duration-200 border ${
                 isExtracting 
                   ? 'bg-zinc-100 dark:bg-zinc-950 text-zinc-400 dark:text-zinc-600 border-zinc-200 dark:border-zinc-900 cursor-not-allowed' 
-                  : 'bg-zinc-900 text-white border-zinc-900 hover:bg-zinc-800 dark:bg-white dark:text-black dark:border-white dark:hover:bg-yellow-400 dark:hover:border-yellow-400 shadow-sm'
+                  : 'bg-zinc-900 text-white border-zinc-900 hover:bg-zinc-800 dark:bg-white dark:text-black dark:border-white dark:hover:bg-yellow-400 dark:hover:text-yellow-400 shadow-sm'
               }`}
             >
               {isExtracting ? "Processing Operation..." : "Select & Extract Archive"}
@@ -207,7 +225,6 @@ function App() {
               </button>
             )}
 
-            {/* ❤️ Voluntary Support Action Link */}
             {!isExtracting && (
               <button
                 onClick={handleDonate}

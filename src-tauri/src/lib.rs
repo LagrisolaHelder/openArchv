@@ -1,6 +1,8 @@
-use std::fs::{File, create_dir_all};
+use std::fs::{File, create_dir_all, remove_dir_all};
 use std::path::PathBuf;
-use tauri::Emitter; 
+use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
+use tauri::{Emitter, State}; 
 use compress_tools::{ArchiveContents, ArchiveIteratorBuilder};
 
 #[derive(Clone, serde::Serialize)]
@@ -8,14 +10,33 @@ struct ProgressPayload {
     percentage: u8,
 }
 
+// ✨ Global state structure to manage and share cancellation flags safely between threads
+pub struct ExtractionState {
+    pub should_cancel: Arc<AtomicBool>,
+}
+
 #[tauri::command]
 fn open_browser(url: String) -> Result<(), String> {
     open::that(url).map_err(|e| e.to_string())
 }
 
+// ✨ Command called by React to abort the active task loop instantly
 #[tauri::command]
-async fn extract_archive(window: tauri::Window, file_path: String) -> Result<String, String> {
-    // 1. Resolve path parameters safely before sending across thread lines
+fn cancel_extraction(state: State<'_, ExtractionState>) -> Result<(), String> {
+    state.should_cancel.store(true, Ordering::SeqCst);
+    Ok(())
+}
+
+#[tauri::command]
+async fn extract_archive(
+    window: tauri::Window, 
+    file_path: String,
+    state: State<'_, ExtractionState> // ✨ Inject our managed cancellation state
+) -> Result<String, String> {
+    // Reset our cancel token flag back to false for the new operations loop
+    state.should_cancel.store(false, Ordering::SeqCst);
+    let cancel_flag = state.should_cancel.clone();
+
     let path = PathBuf::from(&file_path);
     let parent_dir = path.parent().unwrap_or(&std::path::Path::new(".")).to_path_buf();
     let folder_name = path
@@ -26,7 +47,6 @@ async fn extract_archive(window: tauri::Window, file_path: String) -> Result<Str
     let output_dir = parent_dir.join(folder_name);
     let output_dir_clone = output_dir.clone();
 
-    // 2. Offload the heavy synchronous disk loop onto an un-managed background task
     tauri::async_runtime::spawn(async move {
         if let Err(_) = create_dir_all(&output_dir) {
             let _ = window.emit("extraction-progress", ProgressPayload { percentage: 0 });
@@ -51,6 +71,13 @@ async fn extract_archive(window: tauri::Window, file_path: String) -> Result<Str
         let mut current_bytes = 0.0;
 
         for content in iter {
+            // 🛑 CHECK INTERRUPT: If React clicked cancel, abort immediately, clean files, and exit thread
+            if cancel_flag.load(Ordering::SeqCst) {
+                let _ = remove_dir_all(&output_dir); // Wipe half-extracted debris
+                let _ = window.emit("extraction-progress", ProgressPayload { percentage: 0 });
+                return;
+            }
+
             match content {
                 ArchiveContents::StartOfEntry(name, _stat) => {
                     let target_path = output_dir.join(&name);
@@ -70,8 +97,18 @@ async fn extract_archive(window: tauri::Window, file_path: String) -> Result<Str
                     }
                 }
                 ArchiveContents::EndOfEntry => {}
-                ArchiveContents::Err(_) => return,
+                ArchiveContents::Err(_) => {
+                    let _ = remove_dir_all(&output_dir);
+                    return;
+                }
             }
+        }
+
+        // Final layout verification step before running full native pass block
+        if cancel_flag.load(Ordering::SeqCst) {
+            let _ = remove_dir_all(&output_dir);
+            let _ = window.emit("extraction-progress", ProgressPayload { percentage: 0 });
+            return;
         }
 
         let mut final_source = match File::open(&path) {
@@ -80,20 +117,22 @@ async fn extract_archive(window: tauri::Window, file_path: String) -> Result<Str
         };
         
         if compress_tools::uncompress_archive(&mut final_source, &output_dir, compress_tools::Ownership::Ignore).is_ok() {
-            // Send the final completion call
             let _ = window.emit("extraction-progress", ProgressPayload { percentage: 100 });
         }
     });
 
-    // 3. Hand control right back to React immediately so the UI remains active
     Ok(output_dir_clone.to_string_lossy().into_owned())
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
+        // ✨ Register our shared cancellation token mapping configuration state to the Tauri core container
+        .manage(ExtractionState {
+            should_cancel: Arc::new(AtomicBool::new(false)),
+        })
         .plugin(tauri_plugin_dialog::init())
-        .invoke_handler(tauri::generate_handler![open_browser, extract_archive])
+        .invoke_handler(tauri::generate_handler![open_browser, extract_archive, cancel_extraction])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }
