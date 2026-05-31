@@ -1,1 +1,18 @@
 @import "tailwindcss";
+
+/* 🌟 FOR TAILWIND v4: Configure the class-based dark mode strategy */
+@variant dark (&:where(.dark, .dark *));
+
+/* 🌟 FORCE PURE BLACK REPAINT */
+.dark, 
+.dark body, 
+.dark html, 
+.dark #root {
+  background-color: #000000 !important;
+  color: #ffffff !important;
+}
+
+/* Ensure smooth transitions */
+body {
+  transition: background-color 0.3s ease, color 0.3s ease;
+}
