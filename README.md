@@ -1,7 +1,10 @@
  
 # openArchv 📦
+ 
 
-[![Download for macOS](https://img.shields.io/badge/Download-macOS_App-000000?style=for-the-badge&logo=apple&logoColor=white)]([https://github.com/your-username/openArchv/releases/download/v0.1.1/openArchv_Setup.dmg](https://github.com/user-attachments/files/28446946/openArchv.zip))
+[📥 Download openArchv for macOS (.dmg)](https://github.com/your-username/openArchv/releases/download/v0.1.1/openArchv_Setup.dmg)
+
+
 An ultra-minimalist, high-performance native desktop universal archive engine built with **Tauri v2**, **React**, and **Tailwind CSS**. Designed with a distraction-free monochrome interface that enforces zero system overhead and strict layout bounds.
 
 ![openArchv Dashboard Layout](https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?auto=format&fit=crop&w=800&q=80)
