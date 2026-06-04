@@ -18,6 +18,7 @@ crate-type = ["staticlib", "cdylib", "rlib"]
 tauri-build = { version = "2", features = [] }
 
 [dependencies]
+# 🔒 Devtools are completely stripped from production builds by leaving this empty
 tauri = { version = "2", features = [] }
 tauri-plugin-opener = "2"
 serde = { version = "1", features = ["derive"] }
@@ -25,4 +26,8 @@ serde_json = "1"
 zip = "0.6"
 open = "5.3"
 tauri-plugin-dialog = "2.0"
- compress-tools = "0.15"
+compress-tools = "0.15"
+
+# 🛠️ HARDENING LAYER: Only inject devtools (Inspect Element capabilities) when compiling target debug profiles
+[target.'cfg(debug_assertions)'.dependencies]
+tauri = { version = "2", features = ["devtools"] }
